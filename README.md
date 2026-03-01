@@ -111,3 +111,8 @@ AutoLock/
 ## 许可证
 
 MIT License
+
+更新记录：
+2026-03-02修复：
+LockTimer.cs：在OnTimerTick调用 LockWorkStation() 之前，记录主动锁定的时间戳（_lastAutoLockTime），并通过 LastAutoLockTime 属性暴露出去。
+SessionMonitor.cs：在处理 SessionUnlock 事件时，先检查距最近一次程序主动锁定是否不足 30 秒。如果是，则记录日志并忽略该事件，不重启倒计时。

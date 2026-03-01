@@ -33,6 +33,15 @@ public class LockTimer : IDisposable
     /// <summary>标记倒计时是否正在运行</summary>
     private volatile bool _isRunning;
 
+    /// <summary>程序最近一次主动触发锁定的时间点（UTC），用于过滤系统误报的解锁事件</summary>
+    private DateTime _lastAutoLockTime = DateTime.MinValue;
+
+    /// <summary>
+    /// 获取程序最近一次主动触发锁定的时间（UTC）。
+    /// SessionMonitor 用此值判断解锁事件是否为系统在锁定后立即误发。
+    /// </summary>
+    public DateTime LastAutoLockTime => _lastAutoLockTime;
+
     /// <summary>标记对象是否已被释放</summary>
     private bool _disposed;
 
@@ -112,6 +121,7 @@ public class LockTimer : IDisposable
             _isRunning = false;
             StopTimer();
             _logger.Log("倒计时结束，执行锁定计算机");
+            _lastAutoLockTime = DateTime.UtcNow;
             LockWorkStation();
         }
     }

@@ -1,29 +1,32 @@
 @echo off
-chcp 65001 >nul
-:: ============================================
-:: AutoLock 启用开机自启脚本
-:: 通过当前用户注册表实现，无需管理员权限
-:: ============================================
+setlocal EnableExtensions DisableDelayedExpansion
+chcp 65001>nul
 
 set "APP_NAME=AutoLock"
-set "APP_PATH=%~dp0bin\Debug\net8.0-windows\AutoLock.exe"
 set "REG_KEY=HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
 
-:: 检查 AutoLock.exe 是否存在
+for %%I in ("%~dp0.") do set "BASE_DIR=%%~fI"
+set "APP_PATH=%BASE_DIR%\AutoLock.exe"
+
+if not exist "%APP_PATH%" set "APP_PATH=%BASE_DIR%\bin\Debug\net8.0-windows\AutoLock.exe"
+if not exist "%APP_PATH%" set "APP_PATH=%BASE_DIR%\bin\Release\net8.0-windows\AutoLock.exe"
+
 if not exist "%APP_PATH%" (
-    echo [错误] 未找到 AutoLock.exe，请确保此脚本与 AutoLock.exe 在同一目录下。
+    echo [ERROR] AutoLock.exe not found.
+    echo Put this script in the same folder as AutoLock.exe,
+    echo or run it from source folder after dotnet build.
     pause
     exit /b 1
 )
 
-:: 写入注册表
-reg add "%REG_KEY%" /v "%APP_NAME%" /t REG_SZ /d "\"%APP_PATH%\"" /f >nul 2>&1
+set "RUN_VALUE=\"%APP_PATH%\""
+reg add "%REG_KEY%" /v "%APP_NAME%" /t REG_SZ /d "%RUN_VALUE%" /f>nul 2>&1
 
-if %errorlevel% equ 0 (
-    echo [成功] AutoLock 已设置为开机自启。
-    echo 路径: %APP_PATH%
+if errorlevel 1 (
+    echo [ERROR] Failed to enable startup.
 ) else (
-    echo [错误] 设置开机自启失败，请检查权限。
+    echo [OK] Startup enabled.
+    echo Path: %APP_PATH%
 )
 
 pause

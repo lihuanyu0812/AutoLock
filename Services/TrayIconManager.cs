@@ -23,6 +23,9 @@ public class TrayIconManager : ApplicationContext
     /// <summary>日志服务引用，退出时需要记录日志并释放</summary>
     private readonly Logger _logger;
 
+    /// <summary>退出程序验证密码</summary>
+    private readonly string _exitPassword;
+
     /// <summary>
     /// 初始化系统托盘图标管理器。
     /// 创建托盘图标、右键菜单，并启动提示文字更新定时器。
@@ -30,11 +33,13 @@ public class TrayIconManager : ApplicationContext
     /// <param name="lockTimer">倒计时定时器实例，用于获取剩余时间信息</param>
     /// <param name="sessionMonitor">会话监听服务实例，退出时需要停止</param>
     /// <param name="logger">日志服务实例，退出时记录日志并释放</param>
-    public TrayIconManager(LockTimer lockTimer, SessionMonitor sessionMonitor, Logger logger)
+    /// <param name="exitPassword">退出程序时需要输入的密码</param>
+    public TrayIconManager(LockTimer lockTimer, SessionMonitor sessionMonitor, Logger logger, string? exitPassword)
     {
         _lockTimer = lockTimer;
         _sessionMonitor = sessionMonitor;
         _logger = logger;
+        _exitPassword = exitPassword ?? string.Empty;
 
         // 创建右键菜单
         var contextMenu = new ContextMenuStrip();
@@ -88,7 +93,96 @@ public class TrayIconManager : ApplicationContext
     /// <param name="e">事件参数</param>
     private void OnCloseClicked(object? sender, EventArgs e)
     {
+        if (!ValidateExitPassword())
+        {
+            return;
+        }
+
         Application.Exit();
+    }
+
+    private bool ValidateExitPassword()
+    {
+        if (string.IsNullOrWhiteSpace(_exitPassword))
+        {
+            MessageBox.Show("未配置退出密码，程序已拒绝退出。", "AutoLock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
+
+        using var passwordForm = CreatePasswordInputForm();
+        var dialogResult = passwordForm.ShowDialog();
+        if (dialogResult != DialogResult.OK)
+        {
+            return false;
+        }
+
+        var inputTextBox = passwordForm.Controls.Find("ExitPasswordInput", true).OfType<TextBox>().FirstOrDefault();
+        var inputPassword = inputTextBox?.Text ?? string.Empty;
+        if (!string.Equals(inputPassword, _exitPassword, StringComparison.Ordinal))
+        {
+            MessageBox.Show("密码错误，无法退出程序。", "AutoLock", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return false;
+        }
+
+        return true;
+    }
+
+    private Form CreatePasswordInputForm()
+    {
+        var form = new Form
+        {
+            Width = 340,
+            Height = 170,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            StartPosition = FormStartPosition.CenterScreen,
+            Text = "输入退出密码",
+            MaximizeBox = false,
+            MinimizeBox = false
+        };
+
+        var label = new Label
+        {
+            Left = 20,
+            Top = 20,
+            Width = 280,
+            Text = "请输入退出密码："
+        };
+
+        var textBox = new TextBox
+        {
+            Name = "ExitPasswordInput",
+            Left = 20,
+            Top = 50,
+            Width = 280,
+            UseSystemPasswordChar = true
+        };
+
+        var okButton = new Button
+        {
+            Text = "确定",
+            Left = 140,
+            Width = 75,
+            Top = 90,
+            DialogResult = DialogResult.OK
+        };
+
+        var cancelButton = new Button
+        {
+            Text = "取消",
+            Left = 225,
+            Width = 75,
+            Top = 90,
+            DialogResult = DialogResult.Cancel
+        };
+
+        form.Controls.Add(label);
+        form.Controls.Add(textBox);
+        form.Controls.Add(okButton);
+        form.Controls.Add(cancelButton);
+        form.AcceptButton = okButton;
+        form.CancelButton = cancelButton;
+
+        return form;
     }
 
     /// <summary>

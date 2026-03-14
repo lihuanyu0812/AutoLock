@@ -47,7 +47,7 @@ internal static class Program
 
         // 创建托盘图标管理器并进入消息循环
         // TrayIconManager 继承 ApplicationContext，Application.Exit() 时触发其 Dispose
-        using var trayIcon = new TrayIconManager(lockTimer, sessionMonitor, logger);
+        using var trayIcon = new TrayIconManager(lockTimer, sessionMonitor, logger, config.ExitPassword);
         Application.Run(trayIcon);
     }
 

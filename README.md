@@ -31,7 +31,7 @@ dotnet run
 
 ### 关闭程序
 
-右键点击托盘图标 → **关闭**
+右键点击托盘图标 → **关闭** → 输入退出密码
 
 ## 配置说明
 
@@ -40,7 +40,8 @@ dotnet run
 ```json
 {
   "LockTimeoutMinutes": 60,
-  "LogDirectory": "logs"
+  "LogDirectory": "logs",
+  "ExitPassword": "123456"
 }
 ```
 
@@ -48,6 +49,7 @@ dotnet run
 |--------|------|--------|
 | `LockTimeoutMinutes` | 锁定超时时间（分钟） | `60` |
 | `LogDirectory` | 日志文件存储目录（支持相对/绝对路径） | `logs` |
+| `ExitPassword` | 托盘点击“关闭”时的退出验证密码 | `123456` |
 
 > **注意**：修改配置后需重启程序才能生效。
 

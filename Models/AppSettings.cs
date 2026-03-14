@@ -19,4 +19,11 @@ public class AppSettings
     /// 默认值："logs"。
     /// </summary>
     public string LogDirectory { get; set; } = "logs";
+
+    /// <summary>
+    /// 退出程序时的验证密码。
+    /// 托盘菜单点击“关闭”时必须输入该密码才允许退出。
+    /// 默认值："123456"。
+    /// </summary>
+    public string ExitPassword { get; set; } = "123456";
 }

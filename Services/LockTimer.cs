@@ -36,6 +36,12 @@ public class LockTimer : IDisposable
     /// <summary>程序最近一次主动触发锁定的时间点（UTC），用于过滤系统误报的解锁事件</summary>
     private DateTime _lastAutoLockTime = DateTime.MinValue;
 
+    /// <summary>自动锁定后是否仍在等待系统上报 SessionLock 事件</summary>
+    private bool _awaitingSessionLockAfterAutoLock;
+
+    /// <summary>自动锁定相关状态访问锁</summary>
+    private readonly object _autoLockStateLock = new();
+
     /// <summary>
     /// 获取程序最近一次主动触发锁定的时间（UTC）。
     /// SessionMonitor 用此值判断解锁事件是否为系统在锁定后立即误发。
@@ -121,8 +127,49 @@ public class LockTimer : IDisposable
             _isRunning = false;
             StopTimer();
             _logger.Log("倒计时结束，执行锁定计算机");
-            _lastAutoLockTime = DateTime.UtcNow;
+            lock (_autoLockStateLock)
+            {
+                _lastAutoLockTime = DateTime.UtcNow;
+                _awaitingSessionLockAfterAutoLock = true;
+            }
             LockWorkStation();
+        }
+    }
+
+    /// <summary>
+    /// 判断当前解锁事件是否应被识别为自动锁定后的系统误报。
+    /// 仅在“刚触发自动锁定且尚未收到 SessionLock”这一窗口内返回 true。
+    /// </summary>
+    /// <returns>如果应忽略当前解锁事件则返回 true，否则返回 false</returns>
+    public bool ShouldIgnoreUnlockEvent()
+    {
+        lock (_autoLockStateLock)
+        {
+            if (!_awaitingSessionLockAfterAutoLock)
+            {
+                return false;
+            }
+
+            var elapsedSeconds = (DateTime.UtcNow - _lastAutoLockTime).TotalSeconds;
+            if (elapsedSeconds > 30)
+            {
+                _awaitingSessionLockAfterAutoLock = false;
+                return false;
+            }
+
+            return elapsedSeconds >= 0;
+        }
+    }
+
+    /// <summary>
+    /// 通知定时器已收到系统的 SessionLock 事件。
+    /// 收到后会关闭“自动锁定误报过滤窗口”，后续解锁事件将正常触发倒计时。
+    /// </summary>
+    public void NotifySessionLocked()
+    {
+        lock (_autoLockStateLock)
+        {
+            _awaitingSessionLockAfterAutoLock = false;
         }
     }
 

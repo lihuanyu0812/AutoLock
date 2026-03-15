@@ -60,11 +60,11 @@ public class SessionMonitor : IDisposable
         switch (e.Reason)
         {
             case SessionSwitchReason.SessionUnlock:
-                // 防抖：程序主动调用 LockWorkStation() 后，Windows 有时会立即误发一次 SessionUnlock 事件。
-                // 若距最近一次主动锁定不足 30 秒，视为系统误报，不重启倒计时。
-                if ((DateTime.UtcNow - _lockTimer.LastAutoLockTime).TotalSeconds < 30)
+                // 防抖：程序主动调用 LockWorkStation() 后，Windows 可能在真正锁屏前误发 SessionUnlock。
+                // 仅在“自动锁定后且尚未收到 SessionLock”的短窗口内忽略该误报。
+                if (_lockTimer.ShouldIgnoreUnlockEvent())
                 {
-                    _logger.Log("收到解锁事件，但距自动锁定时间过短，识别为系统误报，已忽略");
+                    _logger.Log("收到解锁事件，识别为自动锁定过程中的系统误报，已忽略");
                     break;
                 }
                 _logger.Log("用户解锁，重新开始倒计时");
@@ -77,6 +77,7 @@ public class SessionMonitor : IDisposable
                 break;
 
             case SessionSwitchReason.SessionLock:
+                _lockTimer.NotifySessionLocked();
                 _lockTimer.StopCountdown();
                 break;
 

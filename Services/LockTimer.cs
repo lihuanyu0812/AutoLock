@@ -15,7 +15,7 @@ public class LockTimer : IDisposable
     /// 该函数无需管理员权限即可调用。
     /// </summary>
     /// <returns>如果函数成功，返回非零值</returns>
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool LockWorkStation();
 
     /// <summary>锁定超时时间（分钟）</summary>
@@ -33,6 +33,12 @@ public class LockTimer : IDisposable
     /// <summary>标记倒计时是否正在运行</summary>
     private volatile bool _isRunning;
 
+    /// <summary>下次允许尝试锁定的时间点</summary>
+    private DateTime _nextLockAttemptTime = DateTime.MinValue;
+
+    /// <summary>下次输出心跳日志的时间点</summary>
+    private DateTime _nextHeartbeatTime = DateTime.MinValue;
+
     /// <summary>程序最近一次主动触发锁定的时间点（UTC），用于过滤系统误报的解锁事件</summary>
     private DateTime _lastAutoLockTime = DateTime.MinValue;
 
@@ -41,6 +47,15 @@ public class LockTimer : IDisposable
 
     /// <summary>自动锁定相关状态访问锁</summary>
     private readonly object _autoLockStateLock = new();
+
+    /// <summary>会话状态与错误码访问锁</summary>
+    private readonly object _statusLock = new();
+
+    /// <summary>当前会话状态文本</summary>
+    private string _sessionState = "未知";
+
+    /// <summary>最近一次锁定失败错误码</summary>
+    private int? _lastLockErrorCode;
 
     /// <summary>
     /// 获取程序最近一次主动触发锁定的时间（UTC）。
@@ -91,6 +106,8 @@ public class LockTimer : IDisposable
     {
         StopTimer();
         _startTime = DateTime.Now;
+        _nextLockAttemptTime = _startTime.AddMinutes(_timeoutMinutes);
+        _nextHeartbeatTime = _startTime.AddMinutes(1);
         _isRunning = true;
         _logger.Log($"开始倒计时，锁定时间：{_timeoutMinutes} 分钟");
 
@@ -121,19 +138,106 @@ public class LockTimer : IDisposable
     {
         if (!_isRunning) return;
 
-        var elapsed = DateTime.Now - _startTime;
+        var now = DateTime.Now;
+        WriteHeartbeatIfNeeded(now);
+
+        if (now < _nextLockAttemptTime)
+        {
+            return;
+        }
+
+        var elapsed = now - _startTime;
         if (elapsed.TotalMinutes >= _timeoutMinutes)
         {
-            _isRunning = false;
-            StopTimer();
-            _logger.Log("倒计时结束，执行锁定计算机");
-            lock (_autoLockStateLock)
+            if (TryLockWorkStation(out var errorCode))
             {
-                _lastAutoLockTime = DateTime.UtcNow;
-                _awaitingSessionLockAfterAutoLock = true;
+                _isRunning = false;
+                StopTimer();
+                lock (_statusLock)
+                {
+                    _lastLockErrorCode = null;
+                }
+                _logger.Log("倒计时结束，已发起锁定计算机请求");
+                lock (_autoLockStateLock)
+                {
+                    _lastAutoLockTime = DateTime.UtcNow;
+                    _awaitingSessionLockAfterAutoLock = true;
+                }
+                return;
             }
-            LockWorkStation();
+
+            _nextLockAttemptTime = now.AddSeconds(10);
+            lock (_statusLock)
+            {
+                _lastLockErrorCode = errorCode;
+            }
+            _logger.Log($"倒计时结束，锁定请求失败（错误码：{errorCode}），10 秒后重试");
         }
+    }
+
+    /// <summary>
+    /// 更新当前会话状态。
+    /// </summary>
+    /// <param name="sessionState">会话状态文本</param>
+    /// <returns>无返回值</returns>
+    public void UpdateSessionState(string sessionState)
+    {
+        lock (_statusLock)
+        {
+            _sessionState = sessionState;
+        }
+    }
+
+    /// <summary>
+    /// 按分钟输出倒计时心跳日志。
+    /// </summary>
+    /// <param name="now">当前时间</param>
+    /// <returns>无返回值</returns>
+    private void WriteHeartbeatIfNeeded(DateTime now)
+    {
+        if (now < _nextHeartbeatTime)
+        {
+            return;
+        }
+
+        while (_nextHeartbeatTime <= now)
+        {
+            _nextHeartbeatTime = _nextHeartbeatTime.AddMinutes(1);
+        }
+
+        var remaining = TimeSpan.FromMinutes(_timeoutMinutes) - (now - _startTime);
+        if (remaining < TimeSpan.Zero)
+        {
+            remaining = TimeSpan.Zero;
+        }
+
+        string sessionState;
+        int? lastLockErrorCode;
+        lock (_statusLock)
+        {
+            sessionState = _sessionState;
+            lastLockErrorCode = _lastLockErrorCode;
+        }
+
+        var errorText = lastLockErrorCode?.ToString() ?? "无";
+        _logger.Log($"倒计时心跳，剩余时间：{(int)remaining.TotalMinutes} 分 {remaining.Seconds} 秒，会话状态：{sessionState}，最近锁定错误码：{errorText}");
+    }
+
+    /// <summary>
+    /// 尝试调用系统 API 锁定工作站。
+    /// </summary>
+    /// <param name="errorCode">失败时返回系统错误码，成功时为 0</param>
+    /// <returns>调用成功返回 true，否则返回 false</returns>
+    private static bool TryLockWorkStation(out int errorCode)
+    {
+        if (LockWorkStation())
+        {
+            errorCode = 0;
+            return true;
+        }
+
+        errorCode = Marshal.GetLastWin32Error();
+        return false;
     }
 
     /// <summary>

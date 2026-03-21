@@ -9,6 +9,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>AutoLock</AssemblyName>
     <RootNamespace>AutoLock</RootNamespace>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+
   </PropertyGroup>
 
   <ItemGroup>

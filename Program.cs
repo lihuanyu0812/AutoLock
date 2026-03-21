@@ -43,6 +43,7 @@ internal static class Program
         sessionMonitor.Start();
 
         // 启动后立即开始倒计时（用户当前已登录）
+        lockTimer.UpdateSessionState("活动");
         lockTimer.StartCountdown();
 
         // 创建托盘图标管理器并进入消息循环

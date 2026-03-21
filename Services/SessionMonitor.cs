@@ -18,6 +18,9 @@ public class SessionMonitor : IDisposable
     /// <summary>标记对象是否已被释放</summary>
     private bool _disposed;
 
+    /// <summary>标记当前会话是否已处于锁定状态</summary>
+    private bool _isSessionLocked;
+
     /// <summary>
     /// 初始化会话状态监听服务。
     /// </summary>
@@ -60,28 +63,41 @@ public class SessionMonitor : IDisposable
         switch (e.Reason)
         {
             case SessionSwitchReason.SessionUnlock:
-                // 防抖：程序主动调用 LockWorkStation() 后，Windows 可能在真正锁屏前误发 SessionUnlock。
-                // 仅在“自动锁定后且尚未收到 SessionLock”的短窗口内忽略该误报。
                 if (_lockTimer.ShouldIgnoreUnlockEvent())
                 {
                     _logger.Log("收到解锁事件，识别为自动锁定过程中的系统误报，已忽略");
                     break;
                 }
+
+                if (!_isSessionLocked)
+                {
+                    _logger.Log("收到解锁事件，但当前会话未处于锁定状态，已忽略");
+                    break;
+                }
+
+                _isSessionLocked = false;
+                _lockTimer.UpdateSessionState("活动");
                 _logger.Log("用户解锁，重新开始倒计时");
                 _lockTimer.StartCountdown();
                 break;
 
             case SessionSwitchReason.SessionLogon:
+                _isSessionLocked = false;
+                _lockTimer.UpdateSessionState("活动");
                 _logger.Log("用户登录，开始倒计时");
                 _lockTimer.StartCountdown();
                 break;
 
             case SessionSwitchReason.SessionLock:
+                _isSessionLocked = true;
+                _lockTimer.UpdateSessionState("锁定");
                 _lockTimer.NotifySessionLocked();
                 _lockTimer.StopCountdown();
                 break;
 
             case SessionSwitchReason.SessionLogoff:
+                _isSessionLocked = false;
+                _lockTimer.UpdateSessionState("注销");
                 _lockTimer.StopCountdown();
                 _logger.Log("用户注销");
                 break;
